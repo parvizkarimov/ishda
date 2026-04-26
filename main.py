@@ -70,6 +70,12 @@ class Attendance(Base):
     face_match = Column(Float, nullable=True)
     photo_path = Column(String, nullable=True)
 
+from sqlalchemy import text
+
+# --- MODELLAR ---
+# ... (Modellar tepada e'lon qilingan)
+
+# Bazani yaratish (agar yo'q bo'lsa)
 Base.metadata.create_all(bind=engine)
 
 # --- MIGRATION (Ustunlar yo'q bo'lsa qo'shish) ---
@@ -78,19 +84,21 @@ def migrate_db():
         # Attendance table
         for column in ["lat", "lon", "distance", "photo_path", "face_match"]:
             try:
-                if column == "photo_path":
-                    conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} TEXT")
-                else:
-                    conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} FLOAT")
+                type_str = "TEXT" if column == "photo_path" else "FLOAT"
+                conn.execute(text(f"ALTER TABLE attendance ADD COLUMN {column} {type_str}"))
+                conn.commit() # Postgres uchun commit kerak
                 logger.info(f"Column {column} added to attendance table")
-            except: pass
+            except: 
+                pass
         
         # Users table
         for column in ["username", "phone_number"]:
             try:
-                conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT")
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {column} TEXT"))
+                conn.commit()
                 logger.info(f"Column {column} added to users table")
-            except: pass
+            except: 
+                pass
 
 migrate_db()
 
