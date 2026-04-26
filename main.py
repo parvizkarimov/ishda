@@ -245,13 +245,16 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
 
     # Rasmni saqlash
     photo_filename = None
-    if data.image:
+    if data.image and "," in data.image:
         import base64
         import uuid
         try:
             header, encoded = data.image.split(",", 1)
             data_bytes = base64.b64decode(encoded)
             photo_filename = f"{uuid.uuid4()}.jpg"
+            # UPLOAD_DIR borligini tekshiramiz
+            if not os.path.exists(UPLOAD_DIR):
+                os.makedirs(UPLOAD_DIR)
             with open(os.path.join(UPLOAD_DIR, photo_filename), "wb") as f:
                 f.write(data_bytes)
         except Exception as e:
@@ -259,21 +262,28 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
 
     dist = None
     if data.lat and data.lon:
-        dist = calculate_distance(data.lat, data.lon, OFFICE_LAT, OFFICE_LON)
-        if dist > MAX_DISTANCE_METERS:
-            return {"ok": False, "message": f"Siz ofisdan juda uzoqdasiz ({int(dist)}m)"}
+        try:
+            dist = calculate_distance(data.lat, data.lon, OFFICE_LAT, OFFICE_LON)
+            if dist > MAX_DISTANCE_METERS:
+                return {"ok": False, "message": f"Siz ofisdan juda uzoqdasiz ({int(dist)}m)"}
+        except: pass
 
-    new_record = Attendance(
-        user_id=data.user_id, 
-        action_type=data.action_type, 
-        lat=data.lat, 
-        lon=data.lon, 
-        distance=dist,
-        face_match=data.face_match,
-        photo_path=photo_filename
-    )
-    db.add(new_record)
-    db.commit()
+    try:
+        new_record = Attendance(
+            user_id=data.user_id, 
+            action_type=data.action_type, 
+            lat=data.lat, 
+            lon=data.lon, 
+            distance=dist,
+            face_match=data.face_match,
+            photo_path=photo_filename
+        )
+        db.add(new_record)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database error in attendance: {e}")
+        return {"ok": False, "message": "Ma'lumotni bazaga saqlashda xatolik"}
 
     action_str = "Keldi" if data.action_type == "in" else "Ketdi"
     now_str = get_now().strftime('%H:%M:%S')
