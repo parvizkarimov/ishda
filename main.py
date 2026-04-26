@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_ID")
 
-# Ofis kordinatalari (Masalan: Toshkent, Amity University hududi)
-OFFICE_LAT = 41.3387
-OFFICE_LON = 69.3348
-MAX_DISTANCE_METERS = 200 # 200 metr radiusda ruxsat beriladi
+# Ofis kordinatalari (Samarqand)
+OFFICE_LAT = 39.633670
+OFFICE_LON = 66.919948
+MAX_DISTANCE_METERS = 300 # 300 metr radiusda ruxsat beriladi
 
 # Ma'lumotlar bazasi sozlamalari
 DATABASE_URL = "sqlite:///./ishda.db"
