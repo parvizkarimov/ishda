@@ -78,28 +78,25 @@ from sqlalchemy import text
 # Bazani yaratish
 Base.metadata.create_all(bind=engine)
 
-# --- MIGRATION (Postgres uchun ustunlarni tekshirish va to'g'irlash) ---
+# --- MIGRATION (Postgres uchun to'liq reset) ---
 def migrate_db():
     with engine.connect() as conn:
-        # Agar face_match ustuni bo'lmasa, demak jadval eski. Uni o'chirib qayta yaratamiz.
+        # Agar face_match ustuni bo'lmasa, demak baza eski. Hammasini tozalaymiz.
         try:
             conn.execute(text("SELECT face_match FROM attendance LIMIT 1"))
         except:
-            logger.warning("Attendance jadvali eski versiyada. Qayta yaratilmoqda...")
+            logger.warning("!!! BAZA ESKI VERSIYADA. TO'LIQ RESET QILINMOQDA !!!")
             try:
+                # Jadvallarni o'chirish
                 conn.execute(text("DROP TABLE IF EXISTS attendance CASCADE"))
+                conn.execute(text("DROP TABLE IF EXISTS users CASCADE"))
                 conn.commit()
-                Base.metadata.tables['attendance'].create(bind=engine)
-                logger.info("Attendance jadvali muvaffaqiyatli qayta yaratildi.")
+                
+                # Jadvallarni yangidan yaratish
+                Base.metadata.create_all(bind=engine)
+                logger.info("Barcha jadvallar noldan muvaffaqiyatli yaratildi.")
             except Exception as e:
-                logger.error(f"Table recreate error: {e}")
-
-        # Users table uchun migratsiya
-        for column in ["username", "phone_number"]:
-            try:
-                conn.execute(text(f"ALTER TABLE users ADD COLUMN {column} TEXT"))
-                conn.commit()
-            except: pass
+                logger.error(f"Reset error: {e}")
 
 migrate_db()
 
