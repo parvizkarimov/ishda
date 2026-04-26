@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -26,8 +26,10 @@ class AttendanceAction(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
-    with open(os.path.join(static_path, "index.html"), "r", encoding="utf-8") as f:
-        return f.read()
+    index_file = os.path.join(static_path, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="Index file not found")
 
 @app.post("/api/attendance")
 async def record_attendance(data: AttendanceAction):
