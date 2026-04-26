@@ -83,6 +83,9 @@ def migrate_db():
 
 migrate_db()
 
+# static_path ni yuqoriroqda e'lon qilamiz
+static_path = os.path.join(os.path.dirname(__file__), "static")
+
 # Rasmlar uchun papka
 UPLOAD_DIR = os.path.join(static_path, "uploads")
 if not os.path.exists(UPLOAD_DIR):
@@ -149,7 +152,6 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 
 # --- APP SOZLAMALARI ---
 app = FastAPI(title="Ishda API")
-static_path = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 @app.on_event("startup")
