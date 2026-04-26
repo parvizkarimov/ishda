@@ -249,8 +249,9 @@
                         <tr>
                             <th>Rasm</th>
                             <th>Xodim</th>
-                            <th>Holat</th>
-                            <th>Vaqt</th>
+                            <th>Sana</th>
+                            <th>Keldi</th>
+                            <th>Ketdi</th>
                             <th>Masofa (m)</th>
                         </tr>
                     </thead>
@@ -349,16 +350,24 @@
                 let countIn = 0, countOut = 0;
 
                 data.forEach(row => {
-                    if (row.type === 'in') countIn++; else countOut++;
-                    
                     const tr = document.createElement('tr');
-                    const photoHtml = row.photo ? `<img src="${row.photo}" class="attendance-photo" onclick="showPhoto('${row.photo}')">` : '🖼️';
                     
+                    const inPhoto = row.in_photo ? `<img src="${row.in_photo}" class="attendance-photo" onclick="showPhoto('${row.in_photo}')">` : '🖼️';
+                    const outPhoto = row.out_photo ? `<img src="${row.out_photo}" class="attendance-photo" onclick="showPhoto('${row.out_photo}')">` : '';
+                    
+                    if (row.in_time !== '-') countIn++;
+                    if (row.out_time !== '-') countOut++;
+
                     tr.innerHTML = `
-                        <td>${photoHtml}</td>
+                        <td>
+                            <div style="display: flex; gap: 5px;">
+                                ${inPhoto} ${outPhoto}
+                            </div>
+                        </td>
                         <td style="font-weight: 700;">${row.name}</td>
-                        <td><span class="badge ${row.type === 'in' ? 'badge-in' : 'badge-out'}">${row.type === 'in' ? 'KELDI' : 'KETDI'}</span></td>
-                        <td>${row.time}</td>
+                        <td>${row.date}</td>
+                        <td><span class="badge ${row.in_time !== '-' ? 'badge-in' : ''}">${row.in_time}</span></td>
+                        <td><span class="badge ${row.out_time !== '-' ? 'badge-out' : ''}">${row.out_time}</span></td>
                         <td style="color: ${row.distance > 100 ? 'var(--danger)' : 'var(--success)'}; font-weight: 700;">
                             ${row.distance ? Math.round(row.distance) : '?'}
                         </td>

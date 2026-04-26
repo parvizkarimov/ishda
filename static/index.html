@@ -223,7 +223,36 @@
         }
 
         @keyframes spin { to { transform: rotate(360deg); } }
-    </style>
+
+        .detection-guide {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            z-index: 10;
+            display: none;
+            backdrop-filter: blur(4px);
+        }
+
+        .countdown-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: 800;
+            color: white;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 11;
+            display: none;
+        }
 </head>
 <body>
     <div class="app">
@@ -247,6 +276,8 @@
                     <div class="loader"></div>
                     <p style="font-size: 13px; font-weight: 600; color: var(--text-sub);">Face ID yuklanmoqda...</p>
                 </div>
+                <div id="detection-guide" class="detection-guide">Yuzingizni to'g'ri tuting</div>
+                <div id="countdown" class="countdown-overlay">3</div>
             </div>
 
             <div class="status-card">
@@ -284,6 +315,8 @@
         let currentDescriptor = null;
         let promptTriggered = false;
         let promptCooldown = false;
+        let detectionTimer = null;
+        let countdownValue = 3;
 
         // Modellarni yuklash va foydalanuvchini tekshirish
         async function init() {
@@ -366,38 +399,84 @@
 
                 if (detections.length > 0) {
                     currentDescriptor = detections[0].descriptor;
-                    document.querySelector('.scan-frame').style.borderColor = '#22c55e';
+                    const box = detections[0].detection.box;
+                    const guide = document.getElementById('detection-guide');
+                    const countdownEl = document.getElementById('countdown');
                     
-                    // Avtomatik so'rash logikasi
-                    if (!promptTriggered && !promptCooldown && isRegistered) {
-                        promptTriggered = true;
-                        tg.showPopup({
-                            title: 'Davomatni qayd etish',
-                            message: 'Yuzingiz aniqlandi! Bugun ishga keldizmi yoki ketayapsizmi?',
-                            buttons: [
-                                {id: 'in', type: 'default', text: '👋 Keldim'},
-                                {id: 'out', type: 'destructive', text: '🏠 Ketdim'},
-                                {type: 'cancel', text: 'Yopish'}
-                            ]
-                        }, (buttonId) => {
-                            if (buttonId === 'in' || buttonId === 'out') {
-                                handleCheck(buttonId, true);
+                    // Masofa ko'rsatmalari
+                    if (box.width < 150) {
+                        guide.innerText = "🤳 Yaqinroq keling";
+                        guide.style.display = 'block';
+                        resetDetectionTimer();
+                    } else if (box.width > 350) {
+                        guide.innerText = "🚶 Orqaroq turing";
+                        guide.style.display = 'block';
+                        resetDetectionTimer();
+                    } else {
+                        guide.style.display = 'none';
+                        document.querySelector('.scan-frame').style.borderColor = '#22c55e';
+                        
+                        // 3 soniya kutish logikasi
+                        if (!promptTriggered && !promptCooldown && isRegistered) {
+                            if (!detectionTimer) {
+                                countdownValue = 3;
+                                countdownEl.innerText = countdownValue;
+                                countdownEl.style.display = 'block';
+                                
+                                detectionTimer = setInterval(() => {
+                                    countdownValue--;
+                                    if (countdownValue > 0) {
+                                        countdownEl.innerText = countdownValue;
+                                    } else {
+                                        clearInterval(detectionTimer);
+                                        detectionTimer = null;
+                                        countdownEl.style.display = 'none';
+                                        triggerPrompt();
+                                    }
+                                }, 1000);
                             }
-                            // 5 soniya kutib keyin yana so'rashi mumkin
-                            promptCooldown = true;
-                            setTimeout(() => {
-                                promptCooldown = false;
-                                promptTriggered = false;
-                            }, 5000);
-                        });
+                        }
                     }
                 } else {
                     currentDescriptor = null;
                     document.querySelector('.scan-frame').style.borderColor = '#2563eb';
-                    promptTriggered = false; // Yuz yo'qolsa flagni tushiramiz
+                    resetDetectionTimer();
+                    document.getElementById('detection-guide').style.display = 'none';
                 }
             }, 500);
         });
+
+        function resetDetectionTimer() {
+            if (detectionTimer) {
+                clearInterval(detectionTimer);
+                detectionTimer = null;
+            }
+            document.getElementById('countdown').style.display = 'none';
+            document.querySelector('.scan-frame').style.borderColor = '#2563eb';
+        }
+
+        function triggerPrompt() {
+            if (promptTriggered || promptCooldown) return;
+            promptTriggered = true;
+            tg.showPopup({
+                title: 'Davomatni qayd etish',
+                message: 'Yuzingiz aniqlandi! Bugun ishga keldizmi yoki ketayapsizmi?',
+                buttons: [
+                    {id: 'in', type: 'default', text: '👋 Keldim'},
+                    {id: 'out', type: 'destructive', text: '🏠 Ketdim'},
+                    {type: 'cancel', text: 'Yopish'}
+                ]
+            }, (buttonId) => {
+                if (buttonId === 'in' || buttonId === 'out') {
+                    handleCheck(buttonId, true);
+                }
+                promptCooldown = true;
+                setTimeout(() => {
+                    promptCooldown = false;
+                    promptTriggered = false;
+                }, 5000);
+            });
+        }
 
         // Davomatni qayd etish
         async function recordAttendance(type, lat, lon) {

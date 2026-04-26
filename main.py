@@ -269,15 +269,37 @@ async def get_all_attendance(filter: Optional[str] = "today", db: Session = Depe
         query = query.filter(func.date(Attendance.timestamp) == yesterday)
     # "all" bo'lsa hamma ma'lumotlarni qaytaradi
 
-    results = query.order_by(Attendance.timestamp.desc()).all()
-    return [{
-        "id": a.id,
-        "name": u.full_name,
-        "type": a.action_type,
-        "time": a.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-        "distance": a.distance,
-        "photo": f"/static/uploads/{a.photo_path}" if a.photo_path else None
-    } for a, u in results]
+    results = query.order_by(Attendance.timestamp.asc()).all()
+    
+    # Guruhlash logikasi (Sana + UserID bo'yicha)
+    grouped = {}
+    for a, u in results:
+        date_str = a.timestamp.strftime("%Y-%m-%d")
+        key = f"{date_str}_{u.id}"
+        
+        if key not in grouped:
+            grouped[key] = {
+                "name": u.full_name,
+                "date": date_str,
+                "in_time": "-",
+                "out_time": "-",
+                "in_photo": None,
+                "out_photo": None,
+                "distance": a.distance
+            }
+        
+        time_str = a.timestamp.strftime("%H:%M:%S")
+        if a.action_type == "in":
+            grouped[key]["in_time"] = time_str
+            grouped[key]["in_photo"] = f"/static/uploads/{a.photo_path}" if a.photo_path else None
+        else:
+            grouped[key]["out_time"] = time_str
+            grouped[key]["out_photo"] = f"/static/uploads/{a.photo_path}" if a.photo_path else None
+
+    # Ro'yxatni teskari tartibda qaytarish
+    final_list = list(grouped.values())
+    final_list.reverse()
+    return final_list
 
 @app.get("/api/admin/users")
 async def get_all_users(db: Session = Depends(get_db)):
