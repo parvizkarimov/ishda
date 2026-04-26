@@ -55,6 +55,18 @@ class Attendance(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# --- MIGRATION (Ustunlar yo'q bo'lsa qo'shish) ---
+def migrate_db():
+    with engine.connect() as conn:
+        for column in ["lat", "lon", "distance"]:
+            try:
+                conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} FLOAT")
+                logger.info(f"Column {column} added to attendance table")
+            except:
+                pass # Ustun allaqachon bor bo'lsa xato beradi, uni o'tkazib yuboramiz
+
+migrate_db()
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import func
 

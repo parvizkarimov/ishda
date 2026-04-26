@@ -402,13 +402,15 @@
             let lat = null, lon = null;
             try {
                 const pos = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { 
+                        enableHighAccuracy: true,
+                        timeout: 5000 
+                    });
                 });
                 lat = pos.coords.latitude;
                 lon = pos.coords.longitude;
             } catch (err) {
-                tg.showAlert("GPS kordinatalarini olib bo'lmadi. Iltimos, joylashuvga ruxsat bering!");
-                return;
+                console.warn("GPS kordinatalarini olib bo'lmadi, kordinatasiz davom etamiz.");
             }
 
             // Agar ro'yxatdan o'tmagan bo'lsa - ro'yxatga olamiz
