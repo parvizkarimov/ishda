@@ -261,6 +261,53 @@
             z-index: 11;
             display: none;
         }
+
+        /* Ish vaqti kartasi */
+        .work-status-card {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            margin-top: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            border: 1px solid rgba(0,0,0,0.02);
+        }
+
+        .work-timer {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .timer-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--primary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .history-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .history-item:last-child { border-bottom: none; }
+
+        .btn:disabled {
+            background: #e2e8f0;
+            color: #94a3b8;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
     </style>
 </head>
 <body>
@@ -298,12 +345,28 @@
             </div>
 
             <div class="action-btns">
-                <button class="btn btn-in" onclick="handleCheck('in')">
+                <button id="btn-in" class="btn btn-in" onclick="handleCheck('in')">
                     <span>👋</span> Keldim
                 </button>
-                <button class="btn btn-out" onclick="handleCheck('out')">
+                <button id="btn-out" class="btn btn-out" onclick="handleCheck('out')">
                     <span>🏠</span> Ketdim
                 </button>
+            </div>
+
+            <!-- Yangi: Ish holati kartasi -->
+            <div id="work-status-section" class="work-status-card" style="display: none;">
+                <div class="work-timer">
+                    <p style="font-size: 13px; color: var(--text-sub); margin-bottom: 5px;">Bugun ishlamoqdasiz:</p>
+                    <div id="timer-display" class="timer-value">00:00:00</div>
+                    <p id="first-in-display" style="font-size: 12px; color: var(--text-sub); margin-top: 5px;"></p>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <p style="font-size: 14px; font-weight: 700; margin-bottom: 10px;">Bugungi harakatlar:</p>
+                    <ul id="today-log" class="history-list">
+                        <!-- Loglar shu yerga tushadi -->
+                    </ul>
+                </div>
             </div>
         </main>
     </div>
@@ -326,12 +389,14 @@
         let promptCooldown = false;
         let detectionTimer = null;
         let countdownValue = 3;
+        let workTimerInterval = null;
+        let currentTotalSeconds = 0;
 
         // Modellarni yuklash va foydalanuvchini tekshirish
         async function init() {
             await loadModels();
             await checkUser();
-            loadHistory();
+            loadWorkStatus();
         }
 
         async function loadModels() {
@@ -498,12 +563,92 @@
             });
         }
 
+        // Ish holatini yuklash va taymerni ishga tushirish
+        async function loadWorkStatus() {
+            const userId = tg.initDataUnsafe?.user?.id || 0;
+            if (!userId) return;
+
+            try {
+                const response = await fetch(`/api/history/${userId}`);
+                const data = await response.json();
+                
+                if (data.ok) {
+                    const statusSection = document.getElementById('work-status-section');
+                    statusSection.style.display = 'block';
+                    
+                    // Tugmalar holati
+                    document.getElementById('btn-in').disabled = (data.last_action === 'in');
+                    document.getElementById('btn-out').disabled = (data.last_action !== 'in');
+
+                    // Taymerni yangilash
+                    currentTotalSeconds = data.total_seconds;
+                    updateTimerDisplay(currentTotalSeconds);
+                    
+                    if (data.last_action === 'in') {
+                        startWorkTimer();
+                    } else {
+                        stopWorkTimer();
+                    }
+
+                    // Birinchi kelgan vaqt
+                    document.getElementById('first-in-display').innerText = data.first_in ? `Birinchi kelgan vaqtingiz: ${data.first_in}` : '';
+
+                    // Loglarni chiqarish
+                    const logEl = document.getElementById('today-log');
+                    logEl.innerHTML = '';
+                    data.log.reverse().forEach(item => {
+                        const li = document.createElement('li');
+                        li.className = 'history-item';
+                        li.innerHTML = `
+                            <span style="font-weight: 600;">${item.type === 'in' ? '👋 Keldi' : '🏠 Ketdi'}</span>
+                            <span style="color: var(--text-sub);">${item.time}</span>
+                        `;
+                        logEl.appendChild(li);
+                    });
+                }
+            } catch (err) {
+                console.error("Ish holatini yuklashda xatolik:", err);
+            }
+        }
+
+        function startWorkTimer() {
+            stopWorkTimer();
+            workTimerInterval = setInterval(() => {
+                currentTotalSeconds++;
+                updateTimerDisplay(currentTotalSeconds);
+            }, 1000);
+        }
+
+        function stopWorkTimer() {
+            if (workTimerInterval) clearInterval(workTimerInterval);
+        }
+
+        function updateTimerDisplay(seconds) {
+            const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+            const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('timer-display').innerText = `${h}:${m}:${s}`;
+        }
+
         // Davomatni qayd etish
         async function recordAttendance(type, lat, lon) {
             const userId = tg.initDataUnsafe?.user?.id || 0;
             const userName = tg.initDataUnsafe?.user?.first_name || "User";
             
-            // Rasmni olish (xavfsizroq usul)
+            // O'xshashlikni hisoblash
+            let faceMatch = 0;
+            if (savedDescriptor && currentDescriptor) {
+                const distance = faceapi.euclideanDistance(currentDescriptor, savedDescriptor);
+                // 0.6 - standart chegara (threshold). 
+                // 0.0 masofa = 100%, 0.6 masofa = ~60% o'xshashlik deb hisoblaymiz.
+                faceMatch = Math.round(Math.max(0, 100 - (distance * 100)));
+            }
+
+            // Tugmani vaqtincha o'chirib turamiz
+            document.getElementById('btn-in').disabled = true;
+            document.getElementById('btn-out').disabled = true;
+
+            // Rasmni olish
             let imageData = null;
             try {
                 const canvas = document.createElement('canvas');
@@ -528,7 +673,8 @@
                         action_type: type,
                         lat: lat,
                         lon: lon,
-                        image: imageData
+                        image: imageData,
+                        face_match: faceMatch
                     })
                 });
                 
@@ -536,13 +682,15 @@
                 if (res.ok) {
                     tg.HapticFeedback.notificationOccurred('success');
                     tg.showAlert(res.message);
-                    loadHistory();
+                    loadWorkStatus(); // Yangilash
                 } else {
                     tg.showAlert("Xatolik: " + res.message);
+                    loadWorkStatus(); // Xato bo'lsa ham statusni qayta yuklaymiz
                 }
             } catch (err) {
                 tg.showAlert("Serverga ulanishda xatolik!");
                 console.error(err);
+                loadWorkStatus();
             }
         }
 

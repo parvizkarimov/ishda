@@ -67,6 +67,7 @@ class Attendance(Base):
     lat = Column(Float, nullable=True)
     lon = Column(Float, nullable=True)
     distance = Column(Float, nullable=True)
+    face_match = Column(Float, nullable=True)
     photo_path = Column(String, nullable=True)
 
 Base.metadata.create_all(bind=engine)
@@ -75,9 +76,12 @@ Base.metadata.create_all(bind=engine)
 def migrate_db():
     with engine.connect() as conn:
         # Attendance table
-        for column in ["lat", "lon", "distance", "photo_path"]:
+        for column in ["lat", "lon", "distance", "photo_path", "face_match"]:
             try:
-                conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} FLOAT" if column != "photo_path" else f"ALTER TABLE attendance ADD COLUMN {column} TEXT")
+                if column == "photo_path":
+                    conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} TEXT")
+                else:
+                    conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} FLOAT")
                 logger.info(f"Column {column} added to attendance table")
             except: pass
         
@@ -204,10 +208,11 @@ def get_db():
 class AttendanceAction(BaseModel):
     user_id: int
     user_name: str
-    action_type: str
+    action_type: str # 'in' or 'out'
     lat: Optional[float] = None
     lon: Optional[float] = None
-    image: Optional[str] = None # Base64 image
+    image: Optional[str] = None
+    face_match: Optional[float] = None # Base64 image
 
 class RegisterFace(BaseModel):
     user_id: int
@@ -264,6 +269,7 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
         lat=data.lat, 
         lon=data.lon, 
         distance=dist,
+        face_match=data.face_match,
         photo_path=photo_filename
     )
     db.add(new_record)
@@ -271,7 +277,8 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
 
     action_str = "Keldi" if data.action_type == "in" else "Ketdi"
     now_str = get_now().strftime('%H:%M:%S')
-    msg = f"🔔 <b>Davomat:</b>\n👤 Xodim: {data.user_name}\n🚀 Holat: {action_str}\n📍 Masofa: {int(dist) if dist else '?'}m\n⏰ Vaqt: {now_str}"
+    match_str = f"{int(data.face_match)}%" if data.face_match else "?"
+    msg = f"🔔 <b>Davomat:</b>\n👤 Xodim: {data.user_name}\n🚀 Holat: {action_str}\n📍 Masofa: {int(dist) if dist else '?'}m\n🧬 O'xshashlik: {match_str}\n⏰ Vaqt: {now_str}"
     
     if photo_filename:
         full_photo_path = os.path.join(UPLOAD_DIR, photo_filename)
@@ -280,6 +287,48 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
         await send_telegram_notification(msg)
 
     return {"ok": True, "message": f"{action_str} qayd etildi", "time": now_str}
+
+@app.get("/api/history/{user_id}")
+async def get_user_history(user_id: int, db: Session = Depends(get_db)):
+    today = get_now().date()
+    records = db.query(Attendance).filter(
+        Attendance.user_id == user_id,
+        func.date(Attendance.timestamp) == today
+    ).order_by(Attendance.timestamp.asc()).all()
+    
+    first_in = None
+    last_action = None
+    total_seconds = 0
+    temp_in_time = None
+    
+    log = []
+    for r in records:
+        log.append({
+            "type": r.action_type,
+            "time": r.timestamp.strftime("%H:%M:%S")
+        })
+        if r.action_type == "in":
+            if not first_in: first_in = r.timestamp.strftime("%H:%M:%S")
+            temp_in_time = r.timestamp
+            last_action = "in"
+        else:
+            if temp_in_time:
+                diff = r.timestamp - temp_in_time
+                total_seconds += diff.total_seconds()
+                temp_in_time = None
+            last_action = "out"
+
+    if last_action == "in" and temp_in_time:
+        diff = get_now() - temp_in_time
+        total_seconds += diff.total_seconds()
+
+    return {
+        "ok": True,
+        "first_in": first_in,
+        "last_action": last_action,
+        "total_seconds": int(total_seconds),
+        "log": log
+    }
 
 @app.get("/api/admin/all")
 async def get_all_attendance(filter: Optional[str] = "today", db: Session = Depends(get_db)):
@@ -311,13 +360,15 @@ async def get_all_attendance(filter: Optional[str] = "today", db: Session = Depe
                 "out_time": "-",
                 "in_photo": None,
                 "out_photo": None,
-                "distance": a.distance
+                "distance": a.distance,
+                "face_match": a.face_match
             }
         
         time_str = a.timestamp.strftime("%H:%M:%S")
         if a.action_type == "in":
             grouped[key]["in_time"] = time_str
             grouped[key]["in_photo"] = f"/static/uploads/{a.photo_path}" if a.photo_path else None
+            grouped[key]["face_match"] = a.face_match # Kelgan vaqtdagi o'xshashlikni ko'rsatamiz
         else:
             grouped[key]["out_time"] = time_str
             grouped[key]["out_photo"] = f"/static/uploads/{a.photo_path}" if a.photo_path else None
