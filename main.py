@@ -46,6 +46,8 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String)
+    username = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
     face_descriptor = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
 
@@ -58,20 +60,33 @@ class Attendance(Base):
     lat = Column(Float, nullable=True)
     lon = Column(Float, nullable=True)
     distance = Column(Float, nullable=True)
+    photo_path = Column(String, nullable=True)
 
 Base.metadata.create_all(bind=engine)
 
 # --- MIGRATION (Ustunlar yo'q bo'lsa qo'shish) ---
 def migrate_db():
     with engine.connect() as conn:
-        for column in ["lat", "lon", "distance"]:
+        # Attendance table
+        for column in ["lat", "lon", "distance", "photo_path"]:
             try:
-                conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} FLOAT")
+                conn.execute(f"ALTER TABLE attendance ADD COLUMN {column} FLOAT" if column != "photo_path" else f"ALTER TABLE attendance ADD COLUMN {column} TEXT")
                 logger.info(f"Column {column} added to attendance table")
-            except:
-                pass # Ustun allaqachon bor bo'lsa xato beradi, uni o'tkazib yuboramiz
+            except: pass
+        
+        # Users table
+        for column in ["username", "phone_number"]:
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT")
+                logger.info(f"Column {column} added to users table")
+            except: pass
 
 migrate_db()
+
+# Rasmlar uchun papka
+UPLOAD_DIR = os.path.join(static_path, "uploads")
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import func
@@ -141,6 +156,19 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 async def startup_event():
     # Schedulerni ishga tushirish
     scheduler.start()
+    
+    # Webhookni avtomat sozlash (agar PUBLIC_URL bo'lsa)
+    public_url = os.environ.get("PUBLIC_URL")
+    if public_url and BOT_TOKEN:
+        webhook_url = f"{public_url.rstrip('/')}/webhook"
+        set_webhook_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
+        async with httpx.AsyncClient() as client:
+            try:
+                res = await client.get(set_webhook_url)
+                logger.info(f"Webhook setup status: {res.json()}")
+            except Exception as e:
+                logger.error(f"Webhook setup error: {e}")
+
     # Deploy bo'lganda adminga xabar yuborish
     msg = "🚀 <b>Tizim xabari:</b>\nLoyiha muvaffaqiyatli yangilandi va ishga tushdi!\n\n<i>Kunlik hisobot har kuni 19:00 da yuboriladi.</i>"
     await send_telegram_notification(msg)
@@ -157,6 +185,7 @@ class AttendanceAction(BaseModel):
     action_type: str
     lat: Optional[float] = None
     lon: Optional[float] = None
+    image: Optional[str] = None # Base64 image
 
 class RegisterFace(BaseModel):
     user_id: int
@@ -187,13 +216,34 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
     user = db.query(User).filter(User.id == data.user_id).first()
     if not user: return {"ok": False, "message": "Avval ro'yxatdan o'ting"}
 
+    # Rasmni saqlash
+    photo_filename = None
+    if data.image:
+        import base64
+        import uuid
+        try:
+            header, encoded = data.image.split(",", 1)
+            data_bytes = base64.b64decode(encoded)
+            photo_filename = f"{uuid.uuid4()}.jpg"
+            with open(os.path.join(UPLOAD_DIR, photo_filename), "wb") as f:
+                f.write(data_bytes)
+        except Exception as e:
+            logger.error(f"Image save error: {e}")
+
     dist = None
     if data.lat and data.lon:
         dist = calculate_distance(data.lat, data.lon, OFFICE_LAT, OFFICE_LON)
         if dist > MAX_DISTANCE_METERS:
             return {"ok": False, "message": f"Siz ofisdan juda uzoqdasiz ({int(dist)}m)"}
 
-    new_record = Attendance(user_id=data.user_id, action_type=data.action_type, lat=data.lat, lon=data.lon, distance=dist)
+    new_record = Attendance(
+        user_id=data.user_id, 
+        action_type=data.action_type, 
+        lat=data.lat, 
+        lon=data.lon, 
+        distance=dist,
+        photo_path=photo_filename
+    )
     db.add(new_record)
     db.commit()
 
@@ -223,8 +273,20 @@ async def get_all_attendance(filter: Optional[str] = "today", db: Session = Depe
         "name": u.full_name,
         "type": a.action_type,
         "time": a.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-        "distance": a.distance
+        "distance": a.distance,
+        "photo": f"/static/uploads/{a.photo_path}" if a.photo_path else None
     } for a, u in results]
+
+@app.get("/api/admin/users")
+async def get_all_users(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    return [{
+        "id": u.id,
+        "name": u.full_name,
+        "username": u.username,
+        "phone": u.phone_number,
+        "created_at": u.created_at.strftime("%Y-%m-%d")
+    } for u in users]
 
 @app.get("/api/user/{user_id}")
 async def get_user(user_id: int, db: Session = Depends(get_db)):
@@ -241,6 +303,57 @@ async def get_user(user_id: int, db: Session = Depends(get_db)):
 async def fraud_alert(data: AttendanceAction):
     msg = f"⚠️ <b>SHUBHALI FAOLLIK!</b>\n👤 Xodim: {data.user_name}\n🚫 Holat: Begona inson xodim o'rniga kirishga urindi!\n⏰ Vaqt: {datetime.now().strftime('%H:%M:%S')}"
     await send_telegram_notification(msg)
+    return {"ok": True}
+
+@app.post("/webhook")
+async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    if "message" in data:
+        msg = data["message"]
+        chat_id = msg["chat"]["id"]
+        text = msg.get("text", "")
+        
+        if text == "/start":
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": "Xush kelibsiz! Davomat tizimidan foydalanish uchun telefon raqamingizni yuboring:",
+                "reply_markup": {
+                    "keyboard": [[{"text": "📱 Kontaktni ulash", "request_contact": True}]],
+                    "one_time_keyboard": True,
+                    "resize_keyboard": True
+                }
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(url, json=payload)
+        
+        elif "contact" in msg:
+            contact = msg["contact"]
+            user_id = contact["user_id"]
+            phone = contact["phone_number"]
+            username = msg["from"].get("username", "")
+            first_name = contact.get('first_name', '')
+            last_name = contact.get('last_name', '')
+            full_name = f"{first_name} {last_name}".strip()
+            
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                user = User(id=user_id, full_name=full_name)
+                db.add(user)
+            
+            user.phone_number = phone
+            user.username = username
+            db.commit()
+            
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": "Rahmat! Ma'lumotlaringiz saqlandi. Endi ilovadan foydalanishingiz mumkin.",
+                "reply_markup": {"remove_keyboard": True}
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(url, json=payload)
+                
     return {"ok": True}
 
 @app.get("/api/history/{user_id}")

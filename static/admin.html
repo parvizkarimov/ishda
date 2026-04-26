@@ -154,6 +154,56 @@
             box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
         }
 
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--text-sub);
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        .attendance-photo {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            object-fit: cover;
+            cursor: pointer;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 20px;
+        }
+
         @media (max-width: 600px) {
             .table-container { overflow-x: auto; }
         }
@@ -166,52 +216,126 @@
             <button class="btn-export" onclick="window.print()">Hisobotni yuklash</button>
         </header>
 
-        <div class="filter-container">
-            <button class="filter-btn active" onclick="setFilter('today', this)">Bugun</button>
-            <button class="filter-btn" onclick="setFilter('yesterday', this)">Kecha</button>
-            <button class="filter-btn" onclick="setFilter('all', this)">Hammasi</button>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('attendance', this)">Davomat</div>
+            <div class="tab" onclick="switchTab('employees', this)">Xodimlar</div>
         </div>
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Jami Kelganlar</h3>
-                <p id="stat-in">0</p>
+        <div id="attendance-section">
+            <div class="filter-container">
+                <button class="filter-btn active" onclick="setFilter('today', this)">Bugun</button>
+                <button class="filter-btn" onclick="setFilter('yesterday', this)">Kecha</button>
+                <button class="filter-btn" onclick="setFilter('all', this)">Hammasi</button>
             </div>
-            <div class="stat-card">
-                <h3>Jami Ketganlar</h3>
-                <p id="stat-out">0</p>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Jami Kelganlar</h3>
+                    <p id="stat-in">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Jami Ketganlar</h3>
+                    <p id="stat-out">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Soni</h3>
+                    <p id="stat-today">0</p>
+                </div>
             </div>
-            <div class="stat-card">
-                <h3>Soni</h3>
-                <p id="stat-today">0</p>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rasm</th>
+                            <th>Xodim</th>
+                            <th>Holat</th>
+                            <th>Vaqt</th>
+                            <th>Masofa (m)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendance-body">
+                        <!-- Ma'lumotlar JS orqali keladi -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Xodim</th>
-                        <th>Holat</th>
-                        <th>Vaqt</th>
-                        <th>Masofa (m)</th>
-                    </tr>
-                </thead>
-                <tbody id="attendance-body">
-                    <!-- Ma'lumotlar JS orqali keladi -->
-                </tbody>
-            </table>
+        <div id="employees-section" style="display: none;">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Ism</th>
+                            <th>Username</th>
+                            <th>Telefon</th>
+                            <th>Ro'yxatdan o'tdi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="employees-body">
+                        <!-- Xodimlar JS orqali keladi -->
+                    </tbody>
+                </table>
+            </div>
         </div>
+    </div>
+
+    <div id="photoModal" class="modal" onclick="this.style.display='none'">
+        <img id="modalImg" src="">
     </div>
 
     <script>
         let currentFilter = 'today';
+
+        function switchTab(tab, btn) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            
+            if (tab === 'attendance') {
+                document.getElementById('attendance-section').style.display = 'block';
+                document.getElementById('employees-section').style.display = 'none';
+                loadData();
+            } else {
+                document.getElementById('attendance-section').style.display = 'none';
+                document.getElementById('employees-section').style.display = 'block';
+                loadEmployees();
+            }
+        }
 
         function setFilter(filter, btn) {
             currentFilter = filter;
             document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             loadData();
+        }
+
+        function showPhoto(url) {
+            document.getElementById('modalImg').src = url;
+            document.getElementById('photoModal').style.display = 'flex';
+        }
+
+        async function loadEmployees() {
+            try {
+                const response = await fetch('/api/admin/users');
+                const data = await response.json();
+                const body = document.getElementById('employees-body');
+                body.innerHTML = '';
+                
+                data.forEach(u => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${u.id}</td>
+                        <td style="font-weight: 700;">${u.name}</td>
+                        <td>${u.username ? '@' + u.username : '-'}</td>
+                        <td>${u.phone || '-'}</td>
+                        <td>${u.created_at}</td>
+                    `;
+                    body.appendChild(tr);
+                });
+            } catch (err) {
+                console.error("Xodimlar yuklashda xatolik:", err);
+            }
         }
 
         async function loadData() {
@@ -228,7 +352,10 @@
                     if (row.type === 'in') countIn++; else countOut++;
                     
                     const tr = document.createElement('tr');
+                    const photoHtml = row.photo ? `<img src="${row.photo}" class="attendance-photo" onclick="showPhoto('${row.photo}')">` : '🖼️';
+                    
                     tr.innerHTML = `
+                        <td>${photoHtml}</td>
                         <td style="font-weight: 700;">${row.name}</td>
                         <td><span class="badge ${row.type === 'in' ? 'badge-in' : 'badge-out'}">${row.type === 'in' ? 'KELDI' : 'KETDI'}</span></td>
                         <td>${row.time}</td>
@@ -249,7 +376,11 @@
         }
 
         loadData();
-        setInterval(loadData, 30000); // Har 30 soniyada yangilab turadi
+        setInterval(() => {
+            if (document.getElementById('attendance-section').style.display !== 'none') {
+                loadData();
+            }
+        }, 30000);
     </script>
 </body>
 </html>

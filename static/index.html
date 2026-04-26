@@ -400,10 +400,17 @@
         });
 
         // Davomatni qayd etish
-        async function recordAttendance(type, lat, lon, dist) {
+        async function recordAttendance(type, lat, lon) {
             const userId = tg.initDataUnsafe?.user?.id || 0;
             const userName = tg.initDataUnsafe?.user?.first_name || "User";
             
+            // Rasmni olish
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg', 0.7);
+
             const response = await fetch('/api/attendance', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -412,7 +419,8 @@
                     user_name: userName,
                     action_type: type,
                     lat: lat,
-                    lon: lon
+                    lon: lon,
+                    image: imageData
                 })
             });
             
