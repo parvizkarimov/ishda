@@ -2,7 +2,10 @@ import logging
 import os
 import json
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+def get_now():
+    return datetime.now(timezone(timedelta(hours=5))).replace(tzinfo=None)
 from typing import Optional, List
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
@@ -53,14 +56,14 @@ class User(Base):
     username = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
     face_descriptor = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=get_now)
 
 class Attendance(Base):
     __tablename__ = "attendance"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     action_type = Column(String)
-    timestamp = Column(DateTime, default=datetime.now)
+    timestamp = Column(DateTime, default=get_now)
     lat = Column(Float, nullable=True)
     lon = Column(Float, nullable=True)
     distance = Column(Float, nullable=True)
@@ -102,7 +105,8 @@ from sqlalchemy import func
 async def send_daily_report():
     db = SessionLocal()
     try:
-        today = datetime.now().date()
+        now = get_now()
+        today = now.date()
         # Bugungi barcha davomatlarni olish
         attendances = db.query(Attendance, User).join(User, Attendance.user_id == User.id)\
             .filter(func.date(Attendance.timestamp) == today)\
@@ -254,10 +258,11 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
     db.commit()
 
     action_str = "Keldi" if data.action_type == "in" else "Ketdi"
-    msg = f"🔔 <b>Davomat:</b>\n👤 Xodim: {data.user_name}\n🚀 Holat: {action_str}\n📍 Masofa: {int(dist) if dist else '?'}m\n⏰ Vaqt: {datetime.now().strftime('%H:%M:%S')}"
+    now_str = get_now().strftime('%H:%M:%S')
+    msg = f"🔔 <b>Davomat:</b>\n👤 Xodim: {data.user_name}\n🚀 Holat: {action_str}\n📍 Masofa: {int(dist) if dist else '?'}m\n⏰ Vaqt: {now_str}"
     await send_telegram_notification(msg)
 
-    return {"ok": True, "message": f"{action_str} qayd etildi", "time": datetime.now().strftime("%H:%M:%S")}
+    return {"ok": True, "message": f"{action_str} qayd etildi", "time": now_str}
 
 @app.get("/api/admin/all")
 async def get_all_attendance(filter: Optional[str] = "today", db: Session = Depends(get_db)):
@@ -329,7 +334,8 @@ async def get_user(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/fraud_alert")
 async def fraud_alert(data: AttendanceAction):
-    msg = f"⚠️ <b>SHUBHALI FAOLLIK!</b>\n👤 Xodim: {data.user_name}\n🚫 Holat: Begona inson xodim o'rniga kirishga urindi!\n⏰ Vaqt: {datetime.now().strftime('%H:%M:%S')}"
+    now_str = get_now().strftime('%H:%M:%S')
+    msg = f"⚠️ <b>SHUBHALI FAOLLIK!</b>\n👤 Xodim: {data.user_name}\n🚫 Holat: Begona inson xodim o'rniga kirishga urindi!\n⏰ Vaqt: {now_str}"
     await send_telegram_notification(msg)
     return {"ok": True}
 
