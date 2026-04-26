@@ -78,25 +78,38 @@ from sqlalchemy import text
 # Bazani yaratish
 Base.metadata.create_all(bind=engine)
 
-# --- MIGRATION (Postgres uchun to'liq reset) ---
+# --- MIGRATION (Postgres uchun ustunlarni tekshirish va qo'shish) ---
 def migrate_db():
     with engine.connect() as conn:
-        # Agar face_match ustuni bo'lmasa, demak baza eski. Hammasini tozalaymiz.
-        try:
-            conn.execute(text("SELECT face_match FROM attendance LIMIT 1"))
-        except:
-            logger.warning("!!! BAZA ESKI VERSIYADA. TO'LIQ RESET QILINMOQDA !!!")
+        # Attendance jadvali uchun ustunlar
+        columns_attendance = [
+            ("lat", "FLOAT"),
+            ("lon", "FLOAT"),
+            ("distance", "FLOAT"),
+            ("face_match", "FLOAT"),
+            ("photo_path", "TEXT")
+        ]
+        for col_name, col_type in columns_attendance:
             try:
-                # Jadvallarni o'chirish
-                conn.execute(text("DROP TABLE IF EXISTS attendance CASCADE"))
-                conn.execute(text("DROP TABLE IF EXISTS users CASCADE"))
+                # ADD COLUMN IF NOT EXISTS - Postgres uchun eng xavfsiz yo'l
+                conn.execute(text(f"ALTER TABLE attendance ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
                 conn.commit()
-                
-                # Jadvallarni yangidan yaratish
-                Base.metadata.create_all(bind=engine)
-                logger.info("Barcha jadvallar noldan muvaffaqiyatli yaratildi.")
+                logger.info(f"Attendance: {col_name} ustuni tekshirildi/qo'shildi")
             except Exception as e:
-                logger.error(f"Reset error: {e}")
+                logger.error(f"Migration error (attendance.{col_name}): {e}")
+
+        # Users jadvali uchun ustunlar
+        columns_users = [
+            ("username", "TEXT"),
+            ("phone_number", "TEXT")
+        ]
+        for col_name, col_type in columns_users:
+            try:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                conn.commit()
+                logger.info(f"Users: {col_name} ustuni tekshirildi/qo'shildi")
+            except Exception as e:
+                logger.error(f"Migration error (users.{col_name}): {e}")
 
 migrate_db()
 
