@@ -30,8 +30,14 @@ OFFICE_LON = 66.919948
 MAX_DISTANCE_METERS = 300 # 300 metr radiusda ruxsat beriladi
 
 # Ma'lumotlar bazasi sozlamalari
-DATABASE_URL = "sqlite:///./ishda.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# Railway'da PostgreSQL bo'lsa uni oladi, bo'lmasa SQLite ishlatadi
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///./ishda.db"
+
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

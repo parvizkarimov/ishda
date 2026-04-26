@@ -8,3 +8,4 @@ python-jose[cryptography]
 passlib[bcrypt]
 httpx
 apscheduler
+psycopg2-binary
