@@ -268,12 +268,73 @@
         </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         
         const video = document.getElementById('video');
         const loader = document.getElementById('loader');
+        const statusText = document.querySelector('#loader p');
+        let modelsLoaded = false;
+
+        // Modellarni yuklash
+        async function loadModels() {
+            const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+            statusText.innerText = "Sun'iy intellekt yuklanmoqda...";
+            
+            try {
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+                modelsLoaded = true;
+                statusText.innerText = "Kamera tayyorlanmoqda...";
+                startCamera();
+            } catch (err) {
+                console.error("Modellarni yuklashda xatolik:", err);
+                statusText.innerText = "Xatolik yuz berdi!";
+            }
+        }
+
+        // Kamera yoqish
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user", width: 640, height: 640 } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Kamera xatosi:", err);
+                alert("Kameraga ruxsat berilmadi!");
+            }
+        }
+
+        video.addEventListener('play', () => {
+            const canvas = faceapi.createCanvasFromMedia(video);
+            document.querySelector('.scanner-container').append(canvas);
+            const displaySize = { width: video.offsetWidth, height: video.offsetHeight };
+            faceapi.matchDimensions(canvas, displaySize);
+
+            loader.style.display = 'none';
+
+            setInterval(async () => {
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions());
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                
+                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                // faceapi.draw.drawDetections(canvas, resizedDetections); // Vizual ramka kerak bo'lsa yoqing
+
+                if (detections.length > 0) {
+                    document.querySelector('.scan-frame').style.borderColor = '#22c55e';
+                    document.querySelector('.scan-frame').style.boxShadow = '0 0 20px rgba(34, 197, 94, 0.5)';
+                } else {
+                    document.querySelector('.scan-frame').style.borderColor = '#2563eb';
+                    document.querySelector('.scan-frame').style.boxShadow = 'none';
+                }
+            }, 200);
+        });
 
         // Vaqtni sozlash
         const now = new Date();
@@ -287,33 +348,43 @@
             }
         }
 
-        // Kamera yoqish
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" } 
-                });
-                video.srcObject = stream;
-                loader.style.display = 'none';
-            } catch (err) {
-                console.error("Kamera xatosi:", err);
-                alert("Kameraga ruxsat berilmadi!");
-            }
-        }
-
         async function handleCheck(type) {
             tg.HapticFeedback.impactOccurred('medium');
-            const statusText = type === 'in' ? "Kelganingiz tasdiqlanmoqda..." : "Ketishingiz tasdiqlanmoqda...";
             
-            tg.showConfirm(type === 'in' ? "Kelganingizni tasdiqlaysizmi?" : "Ketayotganingizni tasdiqlaysizmi?", (ok) => {
+            // Yuz aniqlanganligini tekshirish
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions());
+            
+            if (detections.length === 0) {
+                tg.showAlert("Xatolik! Yuzingiz kameraga ko'rinmayapti. Iltimos, yuzingizni ramka ichiga keltiring.");
+                return;
+            }
+
+            tg.showConfirm(type === 'in' ? "Kelganingizni tasdiqlaysizmi?" : "Ketayotganingizni tasdiqlaysizmi?", async (ok) => {
                 if (ok) {
-                    tg.showAlert("Muvaffaqiyatli! Yuzingiz aniqlandi.");
-                    document.getElementById('last-activity').innerText = (type === 'in' ? "Keldi: " : "Ketdi: ") + new Date().toLocaleTimeString();
+                    // API ga yuborish
+                    try {
+                        const response = await fetch('/api/attendance', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                user_id: tg.initDataUnsafe?.user?.id || 0,
+                                user_name: tg.initDataUnsafe?.user?.first_name || "Noma'lum",
+                                action_type: type
+                            })
+                        });
+                        const result = await response.json();
+                        if (result.ok) {
+                            tg.showAlert("Muvaffaqiyatli! " + result.message);
+                            document.getElementById('last-activity').innerText = (type === 'in' ? "Keldi: " : "Ketdi: ") + result.time;
+                        }
+                    } catch (err) {
+                        tg.showAlert("Server bilan bog'lanishda xatolik!");
+                    }
                 }
             });
         }
 
-        startCamera();
+        loadModels();
     </script>
 </body>
 </html>
