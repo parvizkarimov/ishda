@@ -11,10 +11,10 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Float
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Float, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import uvicorn
 import math
 
@@ -51,7 +51,7 @@ Base = declarative_base()
 # --- MODELLAR ---
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(BigInteger, primary_key=True, index=True)
     full_name = Column(String)
     username = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
@@ -61,7 +61,7 @@ class User(Base):
 class Attendance(Base):
     __tablename__ = "attendance"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(BigInteger, ForeignKey("users.id"))
     action_type = Column(String)
     timestamp = Column(DateTime, default=get_now)
     lat = Column(Float, nullable=True)
