@@ -146,6 +146,18 @@ async def send_telegram_notification(message: str):
         except Exception as e:
             logger.error(f"Telegram error: {e}")
 
+async def send_telegram_photo(photo_path: str, caption: str):
+    if not BOT_TOKEN or not ADMIN_CHAT_ID: return
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    async with httpx.AsyncClient() as client:
+        try:
+            with open(photo_path, "rb") as photo:
+                files = {"photo": photo}
+                data = {"chat_id": ADMIN_CHAT_ID, "caption": caption, "parse_mode": "HTML"}
+                await client.post(url, data=data, files=files)
+        except Exception as e:
+            logger.error(f"Telegram photo error: {e}")
+
 # --- SCHEDULER ---
 scheduler = AsyncIOScheduler()
 scheduler.add_job(send_daily_report, 'cron', hour=19, minute=0)
@@ -260,7 +272,12 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
     action_str = "Keldi" if data.action_type == "in" else "Ketdi"
     now_str = get_now().strftime('%H:%M:%S')
     msg = f"🔔 <b>Davomat:</b>\n👤 Xodim: {data.user_name}\n🚀 Holat: {action_str}\n📍 Masofa: {int(dist) if dist else '?'}m\n⏰ Vaqt: {now_str}"
-    await send_telegram_notification(msg)
+    
+    if photo_filename:
+        full_photo_path = os.path.join(UPLOAD_DIR, photo_filename)
+        await send_telegram_photo(full_photo_path, msg)
+    else:
+        await send_telegram_notification(msg)
 
     return {"ok": True, "message": f"{action_str} qayd etildi", "time": now_str}
 
