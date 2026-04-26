@@ -197,6 +197,23 @@ async def get_all_attendance(db: Session = Depends(get_db)):
         "distance": a.distance
     } for a, u in results]
 
+@app.get("/api/user/{user_id}")
+async def get_user(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return {"ok": False, "message": "Foydalanuvchi topilmadi"}
+    return {
+        "ok": True,
+        "full_name": user.full_name,
+        "face_descriptor": json.loads(user.face_descriptor) if user.face_descriptor else None
+    }
+
+@app.post("/api/fraud_alert")
+async def fraud_alert(data: AttendanceAction):
+    msg = f"⚠️ <b>SHUBHALI FAOLLIK!</b>\n👤 Xodim: {data.user_name}\n🚫 Holat: Begona inson xodim o'rniga kirishga urindi!\n⏰ Vaqt: {datetime.now().strftime('%H:%M:%S')}"
+    await send_telegram_notification(msg)
+    return {"ok": True}
+
 @app.get("/api/history/{user_id}")
 async def get_history(user_id: int, db: Session = Depends(get_db)):
     history = db.query(Attendance).filter(Attendance.user_id == user_id).order_by(Attendance.timestamp.desc()).limit(10).all()

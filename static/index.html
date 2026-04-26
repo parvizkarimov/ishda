@@ -309,11 +309,14 @@
         async function checkUser() {
             const userId = tg.initDataUnsafe?.user?.id || 0;
             try {
-                const response = await fetch(`/api/history/${userId}`);
+                const response = await fetch(`/api/user/${userId}`);
                 const data = await response.json();
-                // Agar foydalanuvchi bazada bo'lsa, descriptorini olishimiz kerak
-                // Soddalik uchun, birinchi marta kirdi deb hisoblaymiz agar history bo'sh bo'lsa
-                // (Aslida alohida endpoint qilsa yaxshi bo'ladi)
+                if (data.ok && data.face_descriptor) {
+                    savedDescriptor = new Float32Array(data.face_descriptor);
+                    isRegistered = true;
+                } else {
+                    isRegistered = false;
+                }
             } catch (err) {}
         }
 
@@ -377,6 +380,23 @@
 
             const userId = tg.initDataUnsafe?.user?.id || 0;
             const userName = tg.initDataUnsafe?.user?.first_name || "User";
+
+            // Yuzni solishtirish (Face Verification)
+            if (isRegistered && savedDescriptor) {
+                const distance = faceapi.euclideanDistance(currentDescriptor, savedDescriptor);
+                console.log("Face Distance:", distance);
+                
+                if (distance > 0.6) {
+                    tg.showAlert("Xatolik! Yuzingiz tizimdagi nusxa bilan mos kelmadi. Siz ushbu xodim emassiz!");
+                    
+                    fetch('/api/fraud_alert', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId, user_name: userName, action_type: type })
+                    });
+                    return;
+                }
+            }
 
             // Geolokatsiyani olish
             let lat = null, lon = null;
