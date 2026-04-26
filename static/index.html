@@ -452,13 +452,16 @@
                             lon: lon
                         })
                     });
+                    
                     const res = await response.json();
+                    console.log("Attendance Response:", res);
+
                     if (res.ok) {
                         tg.HapticFeedback.notificationOccurred('success');
                         tg.showAlert(res.message);
                         loadHistory();
                     } else {
-                        tg.showAlert("Xatolik: " + res.message);
+                        tg.showAlert("Server xatosi: " + res.message);
                     }
                 }
             });
