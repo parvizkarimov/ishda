@@ -37,6 +37,10 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 if not DATABASE_URL:
     DATABASE_URL = "sqlite:///./ishda.db"
 
+# Ma'lumotlar bazasi ulanishini tekshirish
+db_type = "PostgreSQL" if DATABASE_URL.startswith("postgresql") else "SQLite"
+logger.info(f"--- FOYDALANILAYOTGAN BAZA: {db_type} ---")
+
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
