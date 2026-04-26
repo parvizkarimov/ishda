@@ -329,11 +329,11 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
         
         elif "contact" in msg:
             contact = msg["contact"]
-            user_id = contact["user_id"]
+            user_id = msg["from"]["id"] # Doim xavfsiz id
             phone = contact["phone_number"]
             username = msg["from"].get("username", "")
-            first_name = contact.get('first_name', '')
-            last_name = contact.get('last_name', '')
+            first_name = msg["from"].get("first_name", "")
+            last_name = msg["from"].get("last_name", "")
             full_name = f"{first_name} {last_name}".strip()
             
             user = db.query(User).filter(User.id == user_id).first()
@@ -348,7 +348,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
             payload = {
                 "chat_id": chat_id,
-                "text": "Rahmat! Ma'lumotlaringiz saqlandi. Endi ilovadan foydalanishingiz mumkin.",
+                "text": "✅ Rahmat! Ma'lumotlaringiz saqlandi. Endi ilovadan bemalol foydalanishingiz mumkin.",
                 "reply_markup": {"remove_keyboard": True}
             }
             async with httpx.AsyncClient() as client:

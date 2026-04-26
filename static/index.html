@@ -404,33 +404,46 @@
             const userId = tg.initDataUnsafe?.user?.id || 0;
             const userName = tg.initDataUnsafe?.user?.first_name || "User";
             
-            // Rasmni olish
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            const imageData = canvas.toDataURL('image/jpeg', 0.7);
+            // Rasmni olish (xavfsizroq usul)
+            let imageData = null;
+            try {
+                const canvas = document.createElement('canvas');
+                const vw = video.videoWidth || 640;
+                const vh = video.videoHeight || 480;
+                canvas.width = vw;
+                canvas.height = vh;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, vw, vh);
+                imageData = canvas.toDataURL('image/jpeg', 0.6);
+            } catch (e) {
+                console.error("Canvas capture error:", e);
+            }
 
-            const response = await fetch('/api/attendance', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: userId,
-                    user_name: userName,
-                    action_type: type,
-                    lat: lat,
-                    lon: lon,
-                    image: imageData
-                })
-            });
-            
-            const res = await response.json();
-            if (res.ok) {
-                tg.HapticFeedback.notificationOccurred('success');
-                tg.showAlert(res.message);
-                loadHistory();
-            } else {
-                tg.showAlert("Server xatosi: " + res.message);
+            try {
+                const response = await fetch('/api/attendance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        user_name: userName,
+                        action_type: type,
+                        lat: lat,
+                        lon: lon,
+                        image: imageData
+                    })
+                });
+                
+                const res = await response.json();
+                if (res.ok) {
+                    tg.HapticFeedback.notificationOccurred('success');
+                    tg.showAlert(res.message);
+                    loadHistory();
+                } else {
+                    tg.showAlert("Xatolik: " + res.message);
+                }
+            } catch (err) {
+                tg.showAlert("Serverga ulanishda xatolik!");
+                console.error(err);
             }
         }
 
