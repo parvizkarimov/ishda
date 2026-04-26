@@ -282,6 +282,8 @@
         let isRegistered = false;
         let savedDescriptor = null;
         let currentDescriptor = null;
+        let promptTriggered = false;
+        let promptCooldown = false;
 
         // Modellarni yuklash va foydalanuvchini tekshirish
         async function init() {
@@ -365,14 +367,66 @@
                 if (detections.length > 0) {
                     currentDescriptor = detections[0].descriptor;
                     document.querySelector('.scan-frame').style.borderColor = '#22c55e';
+                    
+                    // Avtomatik so'rash logikasi
+                    if (!promptTriggered && !promptCooldown && isRegistered) {
+                        promptTriggered = true;
+                        tg.showPopup({
+                            title: 'Davomatni qayd etish',
+                            message: 'Yuzingiz aniqlandi! Bugun ishga keldizmi yoki ketayapsizmi?',
+                            buttons: [
+                                {id: 'in', type: 'default', text: '👋 Keldim'},
+                                {id: 'out', type: 'destructive', text: '🏠 Ketdim'},
+                                {type: 'cancel', text: 'Yopish'}
+                            ]
+                        }, (buttonId) => {
+                            if (buttonId === 'in' || buttonId === 'out') {
+                                handleCheck(buttonId, true);
+                            }
+                            // 5 soniya kutib keyin yana so'rashi mumkin
+                            promptCooldown = true;
+                            setTimeout(() => {
+                                promptCooldown = false;
+                                promptTriggered = false;
+                            }, 5000);
+                        });
+                    }
                 } else {
                     currentDescriptor = null;
                     document.querySelector('.scan-frame').style.borderColor = '#2563eb';
+                    promptTriggered = false; // Yuz yo'qolsa flagni tushiramiz
                 }
             }, 500);
         });
 
-        async function handleCheck(type) {
+        // Davomatni qayd etish
+        async function recordAttendance(type, lat, lon, dist) {
+            const userId = tg.initDataUnsafe?.user?.id || 0;
+            const userName = tg.initDataUnsafe?.user?.first_name || "User";
+            
+            const response = await fetch('/api/attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userId,
+                    user_name: userName,
+                    action_type: type,
+                    lat: lat,
+                    lon: lon
+                })
+            });
+            
+            const res = await response.json();
+            if (res.ok) {
+                tg.HapticFeedback.notificationOccurred('success');
+                tg.showAlert(res.message);
+                loadHistory();
+            } else {
+                tg.showAlert("Server xatosi: " + res.message);
+            }
+        }
+
+        async function handleCheck(type, skipConfirm = false) {
             if (!currentDescriptor) {
                 tg.showAlert("Yuzingiz aniqlanmadi! Iltimos, kameraga qarang.");
                 return;
@@ -384,11 +438,8 @@
             // Yuzni solishtirish (Face Verification)
             if (isRegistered && savedDescriptor) {
                 const distance = faceapi.euclideanDistance(currentDescriptor, savedDescriptor);
-                console.log("Face Distance:", distance);
-                
                 if (distance > 0.6) {
                     tg.showAlert("Xatolik! Yuzingiz tizimdagi nusxa bilan mos kelmadi. Siz ushbu xodim emassiz!");
-                    
                     fetch('/api/fraud_alert', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -410,10 +461,10 @@
                 lat = pos.coords.latitude;
                 lon = pos.coords.longitude;
             } catch (err) {
-                console.warn("GPS kordinatalarini olib bo'lmadi, kordinatasiz davom etamiz.");
+                console.warn("GPS kordinatalarini olib bo'lmadi");
             }
 
-            // Agar ro'yxatdan o'tmagan bo'lsa - ro'yxatga olamiz
+            // Agar ro'yxatdan o'tmagan bo'lsa
             if (!isRegistered) {
                 tg.showConfirm("Siz hali ro'yxatdan o'tmagansiz. Yuzingizni asosiy model sifatida saqlaymizmi?", async (ok) => {
                     if (ok) {
@@ -428,11 +479,9 @@
                         });
                         const res = await response.json();
                         if (res.ok) {
-                            tg.showAlert("Tabriklaymiz! Ro'yxatdan o'tdingiz. Hozir davomatingizni qayd etamiz...");
+                            tg.showAlert("Ro'yxatdan o'tdingiz! Endi davomatni qayd etish mumkin.");
                             isRegistered = true;
-                            savedDescriptor = currentDescriptor; // Yuz nusxasini xotirada saqlab qolamiz
-                            
-                            // Ro'yxatdan o'tgach, avtomatik ravishda davomatni ham qayd etish
+                            savedDescriptor = currentDescriptor;
                             setTimeout(() => handleCheck(type), 500);
                         }
                     }
@@ -440,33 +489,13 @@
                 return;
             }
 
-            // Davomatni qayd etish
-            tg.showConfirm(`${type === 'in' ? 'Kelganingizni' : 'Ketayotganingizni'} tasdiqlaysizmi?`, async (ok) => {
-                if (ok) {
-                    const response = await fetch('/api/attendance', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            user_id: userId,
-                            user_name: userName,
-                            action_type: type,
-                            lat: lat,
-                            lon: lon
-                        })
-                    });
-                    
-                    const res = await response.json();
-                    console.log("Attendance Response:", res);
-
-                    if (res.ok) {
-                        tg.HapticFeedback.notificationOccurred('success');
-                        tg.showAlert(res.message);
-                        loadHistory();
-                    } else {
-                        tg.showAlert("Server xatosi: " + res.message);
-                    }
-                }
-            });
+            if (skipConfirm) {
+                await recordAttendance(type, lat, lon);
+            } else {
+                tg.showConfirm(`${type === 'in' ? 'Kelganingizni' : 'Ketayotganingizni'} tasdiqlaysizmi?`, async (ok) => {
+                    if (ok) await recordAttendance(type, lat, lon);
+                });
+            }
         }
 
         const now = new Date();

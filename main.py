@@ -204,9 +204,20 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
     return {"ok": True, "message": f"{action_str} qayd etildi", "time": datetime.now().strftime("%H:%M:%S")}
 
 @app.get("/api/admin/all")
-async def get_all_attendance(db: Session = Depends(get_db)):
-    # Admin panel uchun barcha ma'lumotlar
-    results = db.query(Attendance, User).join(User, Attendance.user_id == User.id).order_by(Attendance.timestamp.desc()).all()
+async def get_all_attendance(filter: Optional[str] = "today", db: Session = Depends(get_db)):
+    # Admin panel uchun ma'lumotlarni filterlash
+    query = db.query(Attendance, User).join(User, Attendance.user_id == User.id)
+    
+    today = datetime.now().date()
+    if filter == "today":
+        query = query.filter(func.date(Attendance.timestamp) == today)
+    elif filter == "yesterday":
+        from datetime import timedelta
+        yesterday = today - timedelta(days=1)
+        query = query.filter(func.date(Attendance.timestamp) == yesterday)
+    # "all" bo'lsa hamma ma'lumotlarni qaytaradi
+
+    results = query.order_by(Attendance.timestamp.desc()).all()
     return [{
         "id": a.id,
         "name": u.full_name,

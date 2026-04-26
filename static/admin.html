@@ -125,6 +125,35 @@
             transform: translateY(-2px);
         }
 
+        .filter-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: var(--card);
+            padding: 8px;
+            border-radius: 16px;
+            width: fit-content;
+            border: 1px solid #e2e8f0;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: var(--text-sub);
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+        }
+
         @media (max-width: 600px) {
             .table-container { overflow-x: auto; }
         }
@@ -137,6 +166,12 @@
             <button class="btn-export" onclick="window.print()">Hisobotni yuklash</button>
         </header>
 
+        <div class="filter-container">
+            <button class="filter-btn active" onclick="setFilter('today', this)">Bugun</button>
+            <button class="filter-btn" onclick="setFilter('yesterday', this)">Kecha</button>
+            <button class="filter-btn" onclick="setFilter('all', this)">Hammasi</button>
+        </div>
+
         <div class="stats-grid">
             <div class="stat-card">
                 <h3>Jami Kelganlar</h3>
@@ -147,7 +182,7 @@
                 <p id="stat-out">0</p>
             </div>
             <div class="stat-card">
-                <h3>Bugungi Faollik</h3>
+                <h3>Soni</h3>
                 <p id="stat-today">0</p>
             </div>
         </div>
@@ -170,9 +205,18 @@
     </div>
 
     <script>
+        let currentFilter = 'today';
+
+        function setFilter(filter, btn) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadData();
+        }
+
         async function loadData() {
             try {
-                const response = await fetch('/api/admin/all');
+                const response = await fetch(`/api/admin/all?filter=${currentFilter}`);
                 const data = await response.json();
                 
                 const body = document.getElementById('attendance-body');
