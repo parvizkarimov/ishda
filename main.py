@@ -55,15 +55,56 @@ class Attendance(Base):
 
 Base.metadata.create_all(bind=engine)
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import func
+
 # --- FUNKSIYALAR ---
+async def send_daily_report():
+    db = SessionLocal()
+    try:
+        today = datetime.now().date()
+        # Bugungi barcha davomatlarni olish
+        attendances = db.query(Attendance, User).join(User, Attendance.user_id == User.id)\
+            .filter(func.date(Attendance.timestamp) == today)\
+            .order_by(Attendance.timestamp.asc()).all()
+
+        if not attendances:
+            await send_telegram_notification(f"📅 <b>{today}</b> uchun davomat ma'lumotlari mavjud emas.")
+            return
+
+        # Ma'lumotlarni foydalanuvchilar bo'yicha guruhlash
+        report_data = {}
+        for a, u in attendances:
+            if u.id not in report_data:
+                report_data[u.id] = {"name": u.full_name, "in": "---", "out": "---"}
+            
+            time_str = a.timestamp.strftime("%H:%M")
+            if a.action_type == "in" and report_data[u.id]["in"] == "---":
+                report_data[u.id]["in"] = time_str
+            elif a.action_type == "out":
+                report_data[u.id]["out"] = time_str
+
+        # Xabarni shakllantirish
+        msg = f"📅 <b>Kunlik hisobot ({today}):</b>\n\n"
+        for i, (uid, data) in enumerate(report_data.items(), 1):
+            msg += f"{i}. <b>{data['name']}</b>\n   📥 {data['in']} | 📤 {data['out']}\n"
+        
+        await send_telegram_notification(msg)
+    finally:
+        db.close()
+
 async def send_telegram_notification(message: str):
-    if "YOUR_BOT_TOKEN" in BOT_TOKEN: return
+    if not BOT_TOKEN or "YOUR_BOT_TOKEN" in BOT_TOKEN: return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     async with httpx.AsyncClient() as client:
         try:
             await client.post(url, json={"chat_id": ADMIN_CHAT_ID, "text": message, "parse_mode": "HTML"})
         except Exception as e:
             logger.error(f"Telegram error: {e}")
+
+# --- SCHEDULER ---
+scheduler = AsyncIOScheduler()
+scheduler.add_job(send_daily_report, 'cron', hour=19, minute=0)
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     R = 6371000 # Yer radiusi metrda
@@ -80,8 +121,10 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 @app.on_event("startup")
 async def startup_event():
+    # Schedulerni ishga tushirish
+    scheduler.start()
     # Deploy bo'lganda adminga xabar yuborish
-    msg = "🚀 <b>Tizim xabari:</b>\nLoyiha muvaffaqiyatli yangilandi va Railway'da ishga tushdi!"
+    msg = "🚀 <b>Tizim xabari:</b>\nLoyiha muvaffaqiyatli yangilandi va ishga tushdi!\n\n<i>Kunlik hisobot har kuni 19:00 da yuboriladi.</i>"
     await send_telegram_notification(msg)
 
 def get_db():
