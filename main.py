@@ -284,12 +284,13 @@ async def record_attendance(data: AttendanceAction, db: Session = Depends(get_db
             face_match=data.face_match,
             photo_path=photo_filename
         )
+        logger.info(f"Yangi yozuv yaratilmoqda: user_id={data.user_id}, type={data.action_type}, match={data.face_match}")
         db.add(new_record)
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.error(f"Database error in attendance: {e}")
-        return {"ok": False, "message": "Ma'lumotni bazaga saqlashda xatolik"}
+        logger.error(f"DATABASE ERROR DETAILED: {str(e)}")
+        return {"ok": False, "message": f"Bazaga saqlashda xatolik: {str(e)[:50]}"}
 
     action_str = "Keldi" if data.action_type == "in" else "Ketdi"
     now_str = get_now().strftime('%H:%M:%S')
