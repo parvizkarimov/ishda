@@ -226,19 +226,27 @@
 
         .detection-guide {
             position: absolute;
-            bottom: 20px;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0,0,0,0.6);
+            background: rgba(15, 23, 42, 0.9);
             color: white;
-            padding: 8px 16px;
-            border-radius: 12px;
-            font-size: 13px;
-            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 700;
             white-space: nowrap;
-            z-index: 10;
+            z-index: 20;
             display: none;
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { transform: translate(-50%, 20px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
         }
 
         .countdown-overlay {
@@ -398,23 +406,33 @@
                 const resizedDetections = faceapi.resizeResults(detections, displaySize);
                 canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
 
+                const guide = document.getElementById('detection-guide');
+                const countdownEl = document.getElementById('countdown');
+
                 if (detections.length > 0) {
                     currentDescriptor = detections[0].descriptor;
                     const box = detections[0].detection.box;
-                    const guide = document.getElementById('detection-guide');
-                    const countdownEl = document.getElementById('countdown');
+                    const landmarks = detections[0].landmarks;
                     
-                    // Masofa ko'rsatmalari
-                    if (box.width < 150) {
-                        guide.innerText = "🤳 Yaqinroq keling";
-                        guide.style.display = 'block';
+                    // Masofa va holat tahlili
+                    const videoCenter = video.videoWidth / 2;
+                    const faceCenter = box.x + box.width / 2;
+                    const offset = Math.abs(videoCenter - faceCenter);
+
+                    guide.style.display = 'block';
+
+                    if (box.width < 160) {
+                        guide.innerHTML = "🤳 <b>Yaqinroq keling</b>";
                         resetDetectionTimer();
-                    } else if (box.width > 350) {
-                        guide.innerText = "🚶 Orqaroq turing";
-                        guide.style.display = 'block';
+                    } else if (box.width > 380) {
+                        guide.innerHTML = "🚶 <b>Orqaroq turing</b>";
+                        resetDetectionTimer();
+                    } else if (offset > 100) {
+                        guide.innerHTML = "🎯 <b>Yuzingizni o'rtaga qo'ying</b>";
                         resetDetectionTimer();
                     } else {
-                        guide.style.display = 'none';
+                        // Agar hamma narsa to'g'ri bo'lsa
+                        guide.innerHTML = "✨ <b>Yaxshi! Qimirlamang...</b>";
                         document.querySelector('.scan-frame').style.borderColor = '#22c55e';
                         
                         // 3 soniya kutish logikasi
@@ -442,7 +460,8 @@
                     currentDescriptor = null;
                     document.querySelector('.scan-frame').style.borderColor = '#2563eb';
                     resetDetectionTimer();
-                    document.getElementById('detection-guide').style.display = 'none';
+                    guide.innerHTML = "📷 <b>Kameraga qarang</b>";
+                    guide.style.display = 'block';
                 }
             }, 500);
         });
