@@ -75,30 +75,31 @@ from sqlalchemy import text
 # --- MODELLAR ---
 # ... (Modellar tepada e'lon qilingan)
 
-# Bazani yaratish (agar yo'q bo'lsa)
+# Bazani yaratish
 Base.metadata.create_all(bind=engine)
 
-# --- MIGRATION (Ustunlar yo'q bo'lsa qo'shish) ---
+# --- MIGRATION (Postgres uchun ustunlarni tekshirish va to'g'irlash) ---
 def migrate_db():
     with engine.connect() as conn:
-        # Attendance table
-        for column in ["lat", "lon", "distance", "photo_path", "face_match"]:
+        # Agar face_match ustuni bo'lmasa, demak jadval eski. Uni o'chirib qayta yaratamiz.
+        try:
+            conn.execute(text("SELECT face_match FROM attendance LIMIT 1"))
+        except:
+            logger.warning("Attendance jadvali eski versiyada. Qayta yaratilmoqda...")
             try:
-                type_str = "TEXT" if column == "photo_path" else "FLOAT"
-                conn.execute(text(f"ALTER TABLE attendance ADD COLUMN {column} {type_str}"))
-                conn.commit() # Postgres uchun commit kerak
-                logger.info(f"Column {column} added to attendance table")
-            except: 
-                pass
-        
-        # Users table
+                conn.execute(text("DROP TABLE IF EXISTS attendance CASCADE"))
+                conn.commit()
+                Base.metadata.tables['attendance'].create(bind=engine)
+                logger.info("Attendance jadvali muvaffaqiyatli qayta yaratildi.")
+            except Exception as e:
+                logger.error(f"Table recreate error: {e}")
+
+        # Users table uchun migratsiya
         for column in ["username", "phone_number"]:
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {column} TEXT"))
                 conn.commit()
-                logger.info(f"Column {column} added to users table")
-            except: 
-                pass
+            except: pass
 
 migrate_db()
 
