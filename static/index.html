@@ -430,6 +430,8 @@
                         if (res.ok) {
                             tg.showAlert("Tabriklaymiz! Ro'yxatdan o'tdingiz. Hozir davomatingizni qayd etamiz...");
                             isRegistered = true;
+                            savedDescriptor = currentDescriptor; // Yuz nusxasini xotirada saqlab qolamiz
+                            
                             // Ro'yxatdan o'tgach, avtomatik ravishda davomatni ham qayd etish
                             setTimeout(() => handleCheck(type), 500);
                         }
