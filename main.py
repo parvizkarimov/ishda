@@ -20,9 +20,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- SOZLAMALAR ---
-# Telegram Bot sozlamalari (Bularni o'zingizniki bilan almashtirishingiz mumkin)
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-ADMIN_CHAT_ID = "YOUR_ADMIN_CHAT_ID_HERE"
+# Railway Environment Variables dan olish
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_CHAT_ID = os.environ.get("ADMIN_ID")
 
 # Ofis kordinatalari (Masalan: Toshkent, Amity University hududi)
 OFFICE_LAT = 41.3387
@@ -77,6 +77,12 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 app = FastAPI(title="Ishda API")
 static_path = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+@app.on_event("startup")
+async def startup_event():
+    # Deploy bo'lganda adminga xabar yuborish
+    msg = "🚀 <b>Tizim xabari:</b>\nLoyiha muvaffaqiyatli yangilandi va Railway'da ishga tushdi!"
+    await send_telegram_notification(msg)
 
 def get_db():
     db = SessionLocal()
