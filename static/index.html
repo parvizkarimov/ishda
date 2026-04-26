@@ -378,6 +378,19 @@
             const userId = tg.initDataUnsafe?.user?.id || 0;
             const userName = tg.initDataUnsafe?.user?.first_name || "User";
 
+            // Geolokatsiyani olish
+            let lat = null, lon = null;
+            try {
+                const pos = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
+                });
+                lat = pos.coords.latitude;
+                lon = pos.coords.longitude;
+            } catch (err) {
+                tg.showAlert("GPS kordinatalarini olib bo'lmadi. Iltimos, joylashuvga ruxsat bering!");
+                return;
+            }
+
             // Agar ro'yxatdan o'tmagan bo'lsa - ro'yxatga olamiz
             if (!isRegistered) {
                 tg.showConfirm("Siz hali ro'yxatdan o'tmagansiz. Yuzingizni asosiy model sifatida saqlaymizmi?", async (ok) => {
@@ -393,7 +406,7 @@
                         });
                         const res = await response.json();
                         if (res.ok) {
-                            tg.showAlert("Tabriklaymiz! Ro'yxatdan o'tdingiz. Endi davomat qilishingiz mumkin.");
+                            tg.showAlert("Tabriklaymiz! Ro'yxatdan o'tdingiz.");
                             isRegistered = true;
                             loadHistory();
                         }
@@ -411,7 +424,9 @@
                         body: JSON.stringify({
                             user_id: userId,
                             user_name: userName,
-                            action_type: type
+                            action_type: type,
+                            lat: lat,
+                            lon: lon
                         })
                     });
                     const res = await response.json();
@@ -419,6 +434,8 @@
                         tg.HapticFeedback.notificationOccurred('success');
                         tg.showAlert(res.message);
                         loadHistory();
+                    } else {
+                        tg.showAlert("Xatolik: " + res.message);
                     }
                 }
             });
